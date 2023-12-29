@@ -18,7 +18,7 @@
   ],
   "samples": [
     {
-      "displayName": "Example Scene",
+      "displayName": "ExampleScene",
       "description": "Contains and example scene",
       "path": "Samples~/ExampleScene"
     }
