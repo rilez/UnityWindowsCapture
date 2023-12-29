@@ -1,0 +1,16 @@
+{
+    "name": "UnityWindowsCapture.Editor",
+    "rootNamespace": "",
+    "references": [
+        "GUID:0260a88fede958c46a183506c3d762f3"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
