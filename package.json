@@ -15,5 +15,12 @@
     "window",
     "desktop",
     "capture"
+  ],
+  "samples": [
+    {
+      "displayName": "Example Scene",
+      "description": "Contains and example scene",
+      "path": "Samples~/ExampleScene"
+    }
   ]
 }
