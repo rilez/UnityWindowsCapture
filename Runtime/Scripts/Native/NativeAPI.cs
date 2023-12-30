@@ -40,61 +40,6 @@ namespace UnityWindowsCapture.Runtime
         [DllImport("user32.dll", SetLastError = false)]
         public static extern IntPtr GetDesktopWindow();
         
-        
-        // /// <summary>
-        // /// Gets the list of monitors.
-        // /// </summary>
-        // static Dictionary<string, MONITORINFOEX> GetMonitors()
-        // {
-        //     EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, **MonitorEnumProc**, IntPtr.Zero);
-        //
-        //     foreach (var item in monitors)
-        //     {
-        //         Debug.Log($"{item.Value.szDevice}, Resolution:  
-        //         {item.Value.rcMonitor.Right - item.Value.rcMonitor.Left}, 
-        //         {item.Value.rcMonitor.Left- item.Value.rcMonitor.Top}, Pos: 
-        //         {item.Value.rcMonitor.Left},{item.Value.rcMonitor.Top}");
-        //     }
-        //
-        //     return monitors;
-        // }
-        //
-        // /// <summary>
-        // /// Callback during listing of monitors. Invoked for ever attached display.
-        // /// After last invoke, the method EnumDisplayMonitors returns.
-        // /// </summary>
-        // private static bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref Rectangle lprcMonitor, IntPtr dwData)
-        // {
-        //     MONITORINFOEX monitorInfo = new MONITORINFOEX();
-        //     monitorInfo.cbSize = Marshal.SizeOf(typeof(MONITORINFOEX));
-        //     bool res = GetMonitorInfo(hMonitor,  ref monitorInfo);
-        //     if (res == false)
-        //     {                 
-        //         var err = Marshal.GetLastWin32Error();
-        //     }            
-        //
-        //     return true;
-        // }
-        //
-        // [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto, Pack = 4)]
-        // public struct MONITORINFOEX
-        // {
-        //     public int cbSize;
-        //     public Rectangle rcMonitor;
-        //     public Rectangle rcWork;
-        //     public uint dwFlags;
-        //     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
-        //     public string szDevice;
-        // }
-        //
-        // [DllImport("user32.dll")]
-        // [return: MarshalAs(UnmanagedType.Bool)]
-        // public static extern bool EnumDisplayMonitors(IntPtr hdc,
-        //     IntPtr lprcClip,
-        //     EnumMonitorsDelegate lpfnEnum,
-        //     IntPtr dwData);
-        
-        
         [MonoPInvokeCallback(typeof(EnumWindowsProc))]
         public static List<string> GetAllWindowTitles()
         {
@@ -118,90 +63,66 @@ namespace UnityWindowsCapture.Runtime
             return windowTitles;
         }
         
-        public async static Task<WindowCaptureData> GetWindowCaptureData(IntPtr hWnd, WindowCaptureData windowCaptureData)
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetDC(IntPtr hWnd);
+
+        // [DllImport("user32.dll")]
+        // public static extern IntPtr GetWindowDC(IntPtr hWnd);
+
+        public static async Task<WindowCaptureData> GetWindowCaptureData(IntPtr hWnd, WindowCaptureData windowCaptureData, int monitorIndex = -1)
         {
-            var screenBounds = System.Windows.Forms.Screen.AllScreens // Get all screens
-                .Select(screen => screen.Bounds) // Get bounds of all screens
-                .Aggregate(Rectangle.Union); // Union all bounds to get a rectangle that covers them all
-
-            var bitmap = new Bitmap(screenBounds.Width, screenBounds.Height);
-
-            using (var g = Graphics.FromImage(bitmap))
+            RECT rect;
+            IntPtr hdcSrc;
+    
+            if (monitorIndex >= 0) // For specific monitor capture
             {
-                g.CopyFromScreen(screenBounds.Left, screenBounds.Top, 0, 0, bitmap.Size);
+                if (monitorIndex >= System.Windows.Forms.Screen.AllScreens.Length)
+                    throw new ArgumentOutOfRangeException("monitorIndex");
+
+                var screen = System.Windows.Forms.Screen.AllScreens[monitorIndex];
+                rect = new RECT() 
+                { 
+                    Left = screen.Bounds.Left, 
+                    Top = screen.Bounds.Top, 
+                    Right = screen.Bounds.Right, 
+                    Bottom = screen.Bounds.Bottom 
+                };
+
+                hdcSrc = GetDC(IntPtr.Zero); // get a DC for the entire screen
+            }
+            else // For specific window capture.
+            {
+                GetWindowRect(hWnd, out rect);
+                hdcSrc = GetWindowDC(hWnd); // get a DC for the specific window
             }
 
-            // return bitmap;
-            
-            // GetWindowRect(hWnd, out var rect);
-            var width = screenBounds.Width;
-            // var width = rect.Right - rect.Left;
-            var height = screenBounds.Height;
-            // var height = rect.Bottom - rect.Top;
+            var width = rect.Right - rect.Left;
+            var height = rect.Bottom - rect.Top;
+            var bitmap = new Bitmap(width, height);
 
+            using (var gfx = Graphics.FromImage(bitmap))
+            {
+                var hdcDest = gfx.GetHdc();
+                BitBlt(hdcDest, 0, 0, width, height, hdcSrc, rect.Left, rect.Top, 0x00CC0020);
+                gfx.ReleaseHdc(hdcDest);
+            }
+
+            var bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, bitmap.PixelFormat);
             var imageSize = Math.Abs(height * width * 4);
-            
+
             if (windowCaptureData.Data?.Length != imageSize)
             {
                 windowCaptureData.Data = new byte[imageSize];
             }
-            
-            var bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, bitmap.PixelFormat);
-            
+
             windowCaptureData.Width = width;
             windowCaptureData.Height = height;
-            
+
             Marshal.Copy(bitmapData.Scan0, windowCaptureData.Data, 0, imageSize);
-            
             bitmap.UnlockBits(bitmapData);
-    
-            // try
-            // {
-            //     var hdcSrc = GetWindowDC(hWnd);
-            //
-            //     using (var bmp = new Bitmap(width, height))
-            //     {
-            //         using (var g = Graphics.FromImage(bmp))
-            //         {
-            //             var hdcDest = g.GetHdc();
-            //             BitBlt(hdcDest, 0, 0, width, height, hdcSrc, 0, 0, 0x00CC0020);
-            //             g.ReleaseHdc(hdcDest);
-            //         }
-            //
-            //         var bitmapData = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadOnly, bmp.PixelFormat);
-            //
-            //         windowCaptureData.Width = width;
-            //         windowCaptureData.Height = height;
-            //
-            //         Marshal.Copy(bitmapData.Scan0, windowCaptureData.Data, 0, imageSize);
-            //
-            //         bmp.UnlockBits(bitmapData);
-            //     }
-            //
-            //     ReleaseDC(hWnd, hdcSrc);
-            // }
-            // catch (Exception e)
-            // {
-            //     Debug.LogWarning("Could not get texture for window...");
-            // }
-    
+            ReleaseDC(hWnd, hdcSrc);
+
             return windowCaptureData;
-        }
-        
-        public static Bitmap CaptureScreen()
-        {
-            var screenBounds = System.Windows.Forms.Screen.AllScreens // Get all screens
-                .Select(screen => screen.Bounds) // Get bounds of all screens
-                .Aggregate(Rectangle.Union); // Union all bounds to get a rectangle that covers them all
-
-            var bitmap = new Bitmap(screenBounds.Width, screenBounds.Height);
-
-            using (var g = Graphics.FromImage(bitmap))
-            {
-                g.CopyFromScreen(screenBounds.Left, screenBounds.Top, 0, 0, bitmap.Size);
-            }
-
-            return bitmap;
         }
         
         public static Texture2D FlipTextureVertically(Texture2D original)

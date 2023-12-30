@@ -1,17 +1,16 @@
 using System;
-using System.Drawing;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Serialization;
-using Graphics = UnityEngine.Graphics;
 
 namespace UnityWindowsCapture.Runtime
 {
     [Serializable]
     public class WindowCapturer
     {
-        [FormerlySerializedAs("windowCapturerSetting")] [FormerlySerializedAs("WindowCaptureSetting")] public WindowCaptureSetting windowCaptureSetting;
+        [FormerlySerializedAs("windowCapturerSetting")] [FormerlySerializedAs("WindowCaptureSetting")] 
+        public WindowCaptureSetting windowCaptureSetting;
         public float FrameUpdateInterval => 1f / frameRateClamped;
         private float frameRateClamped
         {
@@ -46,16 +45,15 @@ namespace UnityWindowsCapture.Runtime
         
         public bool HasValidInitialization()
         {
-            return true;
-            // return targetWindowHandle != IntPtr.Zero;
+            // return true;
+            return targetWindowHandle != IntPtr.Zero;
         }
 
         public bool HasValidData()
         {
-            return true;
-            // return windowCaptureDatasCurrent[0].Data?.Length > 0;
+            return windowCaptureDatasCurrent[0].Data?.Length > 0;
         }
-        
+
         public async Task<Texture2D> SetTextureDataAsync(bool setWindowCaptureDataInSeparateThread = true)
         {
             if(setWindowCaptureDataInSeparateThread)
@@ -73,7 +71,7 @@ namespace UnityWindowsCapture.Runtime
                 await StopSetWindowCaptureDataTask();
             }
     
-            windowCaptureDatasCurrent[0] = await NativeAPI.GetWindowCaptureData(targetWindowHandle, windowCaptureDatasCurrent[0]);
+            windowCaptureDatasCurrent[0] = await NativeAPI.GetWindowCaptureData(targetWindowHandle, windowCaptureDatasCurrent[0], windowCaptureSetting.MonitorID);
             return GetTexture();
         }
         
@@ -111,7 +109,7 @@ namespace UnityWindowsCapture.Runtime
         {
             while (!token.IsCancellationRequested)
             {
-                windowCaptureDatasCurrent[0] = await NativeAPI.GetWindowCaptureData(targetWindowHandle, windowCaptureDatasCurrent[0]);
+                windowCaptureDatasCurrent[0] = await NativeAPI.GetWindowCaptureData(targetWindowHandle, windowCaptureDatasCurrent[0], windowCaptureSetting.MonitorID);
                 
                 try
                 {
