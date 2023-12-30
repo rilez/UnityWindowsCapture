@@ -1,8 +1,10 @@
 using System;
+using System.Drawing;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Serialization;
+using Graphics = UnityEngine.Graphics;
 
 namespace UnityWindowsCapture.Runtime
 {
@@ -27,6 +29,7 @@ namespace UnityWindowsCapture.Runtime
         public void Initialize()
         {
             windowCaptureDatasCurrent = new WindowCaptureData[1];
+            // targetWindowHandle = NativeAPI.GetDesktopWindow();
             targetWindowHandle = NativeAPI.FindWindow(null, windowCaptureSetting.WindowTitle.Value);
             cancellationTokenSource = new CancellationTokenSource();
         }
@@ -43,14 +46,16 @@ namespace UnityWindowsCapture.Runtime
         
         public bool HasValidInitialization()
         {
-            return targetWindowHandle != IntPtr.Zero;
+            return true;
+            // return targetWindowHandle != IntPtr.Zero;
         }
 
         public bool HasValidData()
         {
-            return windowCaptureDatasCurrent[0].Data?.Length > 0;
+            return true;
+            // return windowCaptureDatasCurrent[0].Data?.Length > 0;
         }
-
+        
         public async Task<Texture2D> SetTextureDataAsync(bool setWindowCaptureDataInSeparateThread = true)
         {
             if(setWindowCaptureDataInSeparateThread)
