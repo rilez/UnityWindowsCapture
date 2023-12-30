@@ -1,3 +1,16 @@
 {
-	"name": "UnityWindowsCapture.Runtime"
+    "name": "UnityWindowsCapture.Runtime",
+    "rootNamespace": "",
+    "references": [
+        "GUID:7edd90d1cdc9eb24fa3d88fa553da9d2"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
 }

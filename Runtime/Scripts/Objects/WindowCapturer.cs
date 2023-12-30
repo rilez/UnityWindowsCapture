@@ -28,7 +28,6 @@ namespace UnityWindowsCapture.Runtime
         public void Initialize()
         {
             windowCaptureDatasCurrent = new WindowCaptureData[1];
-            // targetWindowHandle = NativeAPI.GetDesktopWindow();
             targetWindowHandle = NativeAPI.FindWindow(null, windowCaptureSetting.WindowTitle.Value);
             cancellationTokenSource = new CancellationTokenSource();
         }
@@ -45,8 +44,7 @@ namespace UnityWindowsCapture.Runtime
         
         public bool HasValidInitialization()
         {
-            // return true;
-            return targetWindowHandle != IntPtr.Zero;
+            return targetWindowHandle != IntPtr.Zero || windowCaptureSetting.MonitorID >= 0;
         }
 
         public bool HasValidData()

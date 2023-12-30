@@ -2,13 +2,14 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 using AOT;
 using UnityEngine;
 using Graphics = System.Drawing.Graphics;
+using Screen = System.Windows.Forms.Screen;
 
 namespace UnityWindowsCapture.Runtime
 {
@@ -29,6 +30,7 @@ namespace UnityWindowsCapture.Runtime
 
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
+        // private static extern bool GetWindowRect(IntPtr hWnd, out Rectangle lpRect);
         private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
         
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -36,9 +38,6 @@ namespace UnityWindowsCapture.Runtime
         
         [DllImport("user32.dll")]
         public static extern IntPtr FindWindow(string windowClassName, string windowTitleName);
-        
-        [DllImport("user32.dll", SetLastError = false)]
-        public static extern IntPtr GetDesktopWindow();
         
         [MonoPInvokeCallback(typeof(EnumWindowsProc))]
         public static List<string> GetAllWindowTitles()
@@ -63,67 +62,111 @@ namespace UnityWindowsCapture.Runtime
             return windowTitles;
         }
         
-        [DllImport("user32.dll")]
-        public static extern IntPtr GetDC(IntPtr hWnd);
-
-        // [DllImport("user32.dll")]
-        // public static extern IntPtr GetWindowDC(IntPtr hWnd);
-
-        public static async Task<WindowCaptureData> GetWindowCaptureData(IntPtr hWnd, WindowCaptureData windowCaptureData, int monitorIndex = -1)
+        public async static Task<WindowCaptureData> GetWindowCaptureData(IntPtr hWnd, WindowCaptureData windowCaptureData, int monitorID)
         {
-            RECT rect;
-            IntPtr hdcSrc;
-    
-            if (monitorIndex >= 0) // For specific monitor capture
+            var rect = new RECT();
+            
+            if (monitorID >= 0 &&  monitorID < Screen.AllScreens.Length)
             {
-                if (monitorIndex >= System.Windows.Forms.Screen.AllScreens.Length)
-                    throw new ArgumentOutOfRangeException("monitorIndex");
-
-                var screen = System.Windows.Forms.Screen.AllScreens[monitorIndex];
-                rect = new RECT() 
-                { 
-                    Left = screen.Bounds.Left, 
-                    Top = screen.Bounds.Top, 
-                    Right = screen.Bounds.Right, 
-                    Bottom = screen.Bounds.Bottom 
-                };
-
-                hdcSrc = GetDC(IntPtr.Zero); // get a DC for the entire screen
+                var screenBounds = Screen.AllScreens[monitorID].Bounds;
+                rect.Left = screenBounds.Left;
+                rect.Top = screenBounds.Top;
+                rect.Right = screenBounds.Right;
+                rect.Bottom = screenBounds.Bottom;
             }
-            else // For specific window capture.
+            else
             {
                 GetWindowRect(hWnd, out rect);
-                hdcSrc = GetWindowDC(hWnd); // get a DC for the specific window
             }
 
             var width = rect.Right - rect.Left;
             var height = rect.Bottom - rect.Top;
-            var bitmap = new Bitmap(width, height);
-
-            using (var gfx = Graphics.FromImage(bitmap))
-            {
-                var hdcDest = gfx.GetHdc();
-                BitBlt(hdcDest, 0, 0, width, height, hdcSrc, rect.Left, rect.Top, 0x00CC0020);
-                gfx.ReleaseHdc(hdcDest);
-            }
-
-            var bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, bitmap.PixelFormat);
             var imageSize = Math.Abs(height * width * 4);
-
+    
             if (windowCaptureData.Data?.Length != imageSize)
-            {
+            {   
                 windowCaptureData.Data = new byte[imageSize];
             }
 
-            windowCaptureData.Width = width;
-            windowCaptureData.Height = height;
+            try
+            {
+                using var bmp = new Bitmap(width, height);
+                using var g = Graphics.FromImage(bmp);
+                
+                if (monitorID >= 0 && monitorID < Screen.AllScreens.Length)
+                {
+                    g.CopyFromScreen(rect.Left, rect.Top, 0, 0, new Size(rect.Right - rect.Left, rect.Bottom - rect.Top));
+                } 
+                else 
+                {
+                    var hdcSrc = GetWindowDC(hWnd);
+                    var hdcDest = g.GetHdc();
+                    BitBlt(hdcDest, 0, 0, width, height, hdcSrc, 0, 0, 0x00CC0020);
+                    g.ReleaseHdc(hdcDest);  
+                }
 
-            Marshal.Copy(bitmapData.Scan0, windowCaptureData.Data, 0, imageSize);
-            bitmap.UnlockBits(bitmapData);
-            ReleaseDC(hWnd, hdcSrc);
+                var bitmapData = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadOnly, bmp.PixelFormat);
+
+                windowCaptureData.Width = width;
+                windowCaptureData.Height = height;
+
+                Marshal.Copy(bitmapData.Scan0, windowCaptureData.Data, 0, imageSize);
+
+                bmp.UnlockBits(bitmapData);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("Could not get texture...");
+            }
 
             return windowCaptureData;
         }
+        
+        // public async static Task<WindowCaptureData> GetWindowCaptureData(IntPtr hWnd, WindowCaptureData windowCaptureData, int monitorID)
+        // {
+        //     GetWindowRect(hWnd, out var rect);
+        //     var width = rect.Right - rect.Left;
+        //     var height = rect.Bottom - rect.Top;
+        //
+        //     var imageSize = Math.Abs(height * width * 4);
+        //     
+        //     if (windowCaptureData.Data?.Length != imageSize)
+        //     {
+        //         windowCaptureData.Data = new byte[imageSize];
+        //     }
+        //
+        //     try
+        //     {
+        //         var hdcSrc = GetWindowDC(hWnd);
+        //
+        //         using (var bmp = new Bitmap(width, height))
+        //         {
+        //             using (var g = Graphics.FromImage(bmp))
+        //             {
+        //                 var hdcDest = g.GetHdc();
+        //                 BitBlt(hdcDest, 0, 0, width, height, hdcSrc, 0, 0, 0x00CC0020);
+        //                 g.ReleaseHdc(hdcDest);
+        //             }
+        //
+        //             var bitmapData = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadOnly, bmp.PixelFormat);
+        //     
+        //             windowCaptureData.Width = width;
+        //             windowCaptureData.Height = height;
+        //     
+        //             Marshal.Copy(bitmapData.Scan0, windowCaptureData.Data, 0, imageSize);
+        //     
+        //             bmp.UnlockBits(bitmapData);
+        //         }
+        //
+        //         ReleaseDC(hWnd, hdcSrc);
+        //     }
+        //     catch (Exception e)
+        //     {
+        //         Debug.LogWarning("Could not get texture for window...");
+        //     }
+        //
+        //     return windowCaptureData;
+        // }
         
         public static Texture2D FlipTextureVertically(Texture2D original)
         {
