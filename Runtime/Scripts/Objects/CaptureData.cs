@@ -2,8 +2,10 @@ using System;
 
 namespace UnityWindowsCapture.Runtime
 {
+    // TODO Merge in with ICaptureData/MonitorCaptureData
+    // TODO Generalize/make WindowCapture logic/naming generic
     [Serializable]
-    public struct WindowCaptureData
+    public struct CaptureData
     {
         public int Width;
         public int Height;
@@ -11,7 +13,7 @@ namespace UnityWindowsCapture.Runtime
         
         public override bool Equals(object obj)
         {
-            if (obj is WindowCaptureData other)
+            if (obj is CaptureData other)
             {
                 return Width == other.Width && Height == other.Height && Data.Equals(other.Data);
             }

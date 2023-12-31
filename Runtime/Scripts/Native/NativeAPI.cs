@@ -2,23 +2,75 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
-using System.Windows.Forms;
+// using System.Windows.Forms;
 using AOT;
 using UnityEngine;
 using Graphics = System.Drawing.Graphics;
-using Screen = System.Windows.Forms.Screen;
 
 namespace UnityWindowsCapture.Runtime
 {
     public static class NativeAPI
     {
+        private static bool isEnumeratingMonitors;
+        private static readonly List<IntPtr> enumeratedMonitors = new();
+        
+        [DllImport("user32.dll")]
+        private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, EnumMonitorsDelegate lpfnEnum, IntPtr dwData);
+        delegate bool EnumMonitorsDelegate(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
+
+        [MonoPInvokeCallback(typeof(EnumMonitorsDelegate))]
+        private static bool EnumDisplayMonitorsCallback(IntPtr monitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr data)
+        {
+            enumeratedMonitors.Add(monitor);
+            return true;
+        }
+        
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfoEx lpmi);
+        
+        public static IEnumerable<MonitorCaptureData> GetMonitors()
+        {
+            return EnumDisplayMonitors().Select(monitor => new MonitorCaptureData(monitor));
+        }
+        
+        private static IEnumerable<IntPtr> EnumDisplayMonitors()
+        {
+            if(isEnumeratingMonitors) throw new InvalidOperationException("Only one instance of EnumDisplayMonitors() can be called at the same time.");
+            
+            isEnumeratingMonitors = true;
+            enumeratedMonitors.Clear();
+            
+            try
+            {
+                EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, EnumDisplayMonitorsCallback, IntPtr.Zero);
+            }
+            finally
+            {
+                isEnumeratingMonitors = false;
+            }
+
+            return enumeratedMonitors.ToArray();
+        }
+        
+        public static void UpdateMonitorInfo(IntPtr handle, ref MonitorInfoEx info)
+        {
+            var mi = new MonitorInfoEx();
+            mi.Size = Marshal.SizeOf(mi);
+                
+            if (GetMonitorInfo(handle, ref mi))
+            {
+                info = mi;
+            }
+        }
+
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
         private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-
+        
         [DllImport("user32.dll")]
         private static extern IntPtr GetWindowDC(IntPtr hWnd);
 
@@ -62,13 +114,13 @@ namespace UnityWindowsCapture.Runtime
             return windowTitles;
         }
         
-        public async static Task<WindowCaptureData> GetWindowCaptureData(IntPtr hWnd, WindowCaptureData windowCaptureData, int monitorID)
+        public async static Task<CaptureData> GetWindowCaptureData(IntPtr hWnd, CaptureData captureData, int monitorID)
         {
             var rect = new RECT();
             
-            if (monitorID >= 0 &&  monitorID < Screen.AllScreens.Length)
+            if (monitorID >= 0 &&  monitorID < GetMonitors().ToList().Count)
             {
-                var screenBounds = Screen.AllScreens[monitorID].Bounds;
+                var screenBounds = GetMonitors().ToList()[monitorID].Info.Monitor;
                 rect.Left = screenBounds.Left;
                 rect.Top = screenBounds.Top;
                 rect.Right = screenBounds.Right;
@@ -83,9 +135,9 @@ namespace UnityWindowsCapture.Runtime
             var height = rect.Bottom - rect.Top;
             var imageSize = Math.Abs(height * width * 4);
     
-            if (windowCaptureData.Data?.Length != imageSize)
+            if (captureData.Data?.Length != imageSize)
             {   
-                windowCaptureData.Data = new byte[imageSize];
+                captureData.Data = new byte[imageSize];
             }
 
             try
@@ -93,7 +145,7 @@ namespace UnityWindowsCapture.Runtime
                 using var bmp = new Bitmap(width, height);
                 using var g = Graphics.FromImage(bmp);
                 
-                if (monitorID >= 0 && monitorID < Screen.AllScreens.Length)
+                if (monitorID >= 0 && monitorID < GetMonitors().ToList().Count)
                 {
                     g.CopyFromScreen(rect.Left, rect.Top, 0, 0, new Size(rect.Right - rect.Left, rect.Bottom - rect.Top));
                 } 
@@ -107,10 +159,10 @@ namespace UnityWindowsCapture.Runtime
 
                 var bitmapData = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadOnly, bmp.PixelFormat);
 
-                windowCaptureData.Width = width;
-                windowCaptureData.Height = height;
+                captureData.Width = width;
+                captureData.Height = height;
 
-                Marshal.Copy(bitmapData.Scan0, windowCaptureData.Data, 0, imageSize);
+                Marshal.Copy(bitmapData.Scan0, captureData.Data, 0, imageSize);
 
                 bmp.UnlockBits(bitmapData);
             }
@@ -119,54 +171,8 @@ namespace UnityWindowsCapture.Runtime
                 Debug.LogWarning("Could not get texture...");
             }
 
-            return windowCaptureData;
+            return captureData;
         }
-        
-        // public async static Task<WindowCaptureData> GetWindowCaptureData(IntPtr hWnd, WindowCaptureData windowCaptureData, int monitorID)
-        // {
-        //     GetWindowRect(hWnd, out var rect);
-        //     var width = rect.Right - rect.Left;
-        //     var height = rect.Bottom - rect.Top;
-        //
-        //     var imageSize = Math.Abs(height * width * 4);
-        //     
-        //     if (windowCaptureData.Data?.Length != imageSize)
-        //     {
-        //         windowCaptureData.Data = new byte[imageSize];
-        //     }
-        //
-        //     try
-        //     {
-        //         var hdcSrc = GetWindowDC(hWnd);
-        //
-        //         using (var bmp = new Bitmap(width, height))
-        //         {
-        //             using (var g = Graphics.FromImage(bmp))
-        //             {
-        //                 var hdcDest = g.GetHdc();
-        //                 BitBlt(hdcDest, 0, 0, width, height, hdcSrc, 0, 0, 0x00CC0020);
-        //                 g.ReleaseHdc(hdcDest);
-        //             }
-        //
-        //             var bitmapData = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadOnly, bmp.PixelFormat);
-        //     
-        //             windowCaptureData.Width = width;
-        //             windowCaptureData.Height = height;
-        //     
-        //             Marshal.Copy(bitmapData.Scan0, windowCaptureData.Data, 0, imageSize);
-        //     
-        //             bmp.UnlockBits(bitmapData);
-        //         }
-        //
-        //         ReleaseDC(hWnd, hdcSrc);
-        //     }
-        //     catch (Exception e)
-        //     {
-        //         Debug.LogWarning("Could not get texture for window...");
-        //     }
-        //
-        //     return windowCaptureData;
-        // }
         
         public static Texture2D FlipTextureVertically(Texture2D original)
         {

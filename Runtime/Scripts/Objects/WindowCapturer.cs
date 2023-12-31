@@ -18,8 +18,8 @@ namespace UnityWindowsCapture.Runtime
             set => windowCaptureSetting.FrameRate = Mathf.Clamp(value, 0.01f, 60f);
         }
         [NonSerialized]
-        public WindowCaptureData[] windowCaptureDatasCurrent;
-        private WindowCaptureData[] windowCaptureDatasPrevious;
+        public CaptureData[] windowCaptureDatasCurrent;
+        private CaptureData[] windowCaptureDatasPrevious;
         private Texture2D texture;
         private IntPtr targetWindowHandle;
         private CancellationTokenSource cancellationTokenSource;
@@ -27,7 +27,7 @@ namespace UnityWindowsCapture.Runtime
         
         public void Initialize()
         {
-            windowCaptureDatasCurrent = new WindowCaptureData[1];
+            windowCaptureDatasCurrent = new CaptureData[1];
             targetWindowHandle = NativeAPI.FindWindow(null, windowCaptureSetting.WindowTitle.Value);
             cancellationTokenSource = new CancellationTokenSource();
         }
@@ -93,7 +93,7 @@ namespace UnityWindowsCapture.Runtime
                 texture.Apply(); 
             }
   
-            windowCaptureDatasPrevious ??= new WindowCaptureData[1];
+            windowCaptureDatasPrevious ??= new CaptureData[1];
             windowCaptureDatasPrevious[0] = windowCaptureDatasCurrent[0];
             return texture;
         }
